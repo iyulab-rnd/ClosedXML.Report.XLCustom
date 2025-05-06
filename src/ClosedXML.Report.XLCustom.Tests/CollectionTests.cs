@@ -10,7 +10,7 @@ namespace ClosedXML.Report.XLCustom.Tests
         }
 
         [Fact]
-        public void SimpleVerticalCollection_WithDefinedNames_ShouldPopulateTemplate()
+        public void SimpleVerticalCollection_WithDefinedNames_AndFormatting_ShouldPopulateTemplate()
         {
             // Arrange
             // Create a simple product list for testing
@@ -30,31 +30,44 @@ namespace ClosedXML.Report.XLCustom.Tests
             sheet.Cell("B1").Value = "Product Name";
             sheet.Cell("C1").Value = "Price";
             sheet.Cell("D1").Value = "Calculated Value";
+            sheet.Cell("E1").Value = "Formatted Name";
+            sheet.Cell("F1").Value = "Currency";
 
             // Add template expressions for the data row
             sheet.Cell("A2").Value = "{{item.Id}}";
             sheet.Cell("B2").Value = "{{item.Name}}";
-            sheet.Cell("C2").Value = "{{item.Price}}";
-            sheet.Cell("D2").Value = "{{item.Price * 1.1}}"; // Add a calculated field
+            sheet.Cell("C2").Value = "{{item.Price:F2}}"; // Format with 2 decimal places
+            sheet.Cell("D2").Value = "{{item.Price * 1.1:F2}}"; // Calculated field with format
+            sheet.Cell("E2").Value = "{{item.Name:upper}}"; // Format with custom upper formatter
+            sheet.Cell("F2").Value = "{{item.Price:C}}"; // Currency format
 
             // Add service row for aggregations
             sheet.Cell("A3").Value = "Totals:";
             sheet.Cell("B3").Value = "";
             sheet.Cell("C3").Value = "<<sum>>";
             sheet.Cell("D3").Value = "<<sum>>";
+            sheet.Cell("E3").Value = "Total Items: {{ProductList.Count}}"; // Show count
+            sheet.Cell("F3").Value = "<<sum>>";
 
             // Add service column (required for vertical tables)
-            sheet.Cell("E2").Value = "";
+            sheet.Cell("G2").Value = "";
 
             // Create a named range for the vertical collection
-            var productRange = sheet.Range("A2:E3");
+            var productRange = sheet.Range("A2:G3");
             workbook.DefinedNames.Add("ProductList", productRange);
+
+            // Apply styling to headers
+            var headerRange = sheet.Range("A1:F1");
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
 
             // Apply number format to price columns
             sheet.Cell("C2").Style.NumberFormat.Format = "#,##0.00";
             sheet.Cell("D2").Style.NumberFormat.Format = "#,##0.00";
             sheet.Cell("C3").Style.NumberFormat.Format = "#,##0.00";
             sheet.Cell("D3").Style.NumberFormat.Format = "#,##0.00";
+            sheet.Cell("F2").Style.NumberFormat.Format = "$#,##0.00";
+            sheet.Cell("F3").Style.NumberFormat.Format = "$#,##0.00";
 
             // Save template to memory stream
             using var ms = new MemoryStream();
@@ -63,13 +76,16 @@ namespace ClosedXML.Report.XLCustom.Tests
 
             // Act
             var template = new XLCustomTemplate(ms);
+
+            // Register the built-in formatters including 'upper'
+            template.RegisterBuiltInFormatters();
+
             template.AddVariable("ProductList", products);
             var result = template.Generate();
             LogResult(result);
 
             // Assert
             Assert.False(result.HasErrors, "Template generation should not produce errors");
-
             var wb = template.Workbook;
             var ws = wb.Worksheet("Products");
 
@@ -78,10 +94,13 @@ namespace ClosedXML.Report.XLCustom.Tests
             Assert.Equal("Laptop", ws.Cell("B2").GetString());
             Assert.Equal(1200.00m, ws.Cell("C2").GetValue<decimal>());
             Assert.Equal(1320.00m, ws.Cell("D2").GetValue<decimal>()); // Calculated value
+            Assert.Equal("LAPTOP", ws.Cell("E2").GetString()); // Uppercase format
+            Assert.Equal(1200.00m, ws.Cell("F2").GetValue<decimal>()); // Currency format
 
             // Check the second row
             Assert.Equal(2, ws.Cell("A3").GetValue<int>());
             Assert.Equal("Smartphone", ws.Cell("B3").GetString());
+            Assert.Equal("SMARTPHONE", ws.Cell("E3").GetString()); // Uppercase format
 
             // Verify sum aggregation in the totals row
             int lastRow = 2 + products.Count;
@@ -90,8 +109,10 @@ namespace ClosedXML.Report.XLCustom.Tests
 
             Assert.Equal(expectedTotal, ws.Cell($"C{lastRow}").GetValue<decimal>());
             Assert.Equal(expectedCalculatedTotal, ws.Cell($"D{lastRow}").GetValue<decimal>());
+            Assert.Equal(expectedTotal, ws.Cell($"F{lastRow}").GetValue<decimal>());
+            Assert.Contains($"Total Items: {products.Count}", ws.Cell($"E{lastRow}").GetString());
 
-            Output.WriteLine("Simple vertical collection with DefinedNames test passed successfully!");
+            Output.WriteLine("Simple vertical collection with DefinedNames and formatting test passed successfully!");
         }
 
         [Fact]

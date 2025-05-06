@@ -116,6 +116,26 @@ internal static class ExpressionParser
                 expression);
         }
 
+        // Special case for collections metadata 
+        if (content.Contains(".Count"))
+        {
+            string[] parts = content.Split(new string[] { "." }, StringSplitOptions.None);
+            if (parts.Length == 2 && parts[1] == "Count")
+            {
+                Debug.WriteLine($"Found collection metadata: {parts[0]}.Count");
+
+                // 변환된 변수명 반환
+                string countVarName = $"{parts[0]}_Count";
+
+                return new ParsedExpression(
+                    ExpressionType.Standard,
+                    countVarName,
+                    null,
+                    Array.Empty<string>(),
+                    expression);
+            }
+        }
+
         // Standard variable expression
         Debug.WriteLine($"Parsed standard variable: {content}");
         return new ParsedExpression(

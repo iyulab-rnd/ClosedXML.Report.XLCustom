@@ -11,16 +11,14 @@ public partial class XLCustomTemplate : IXLTemplate
     private readonly TemplateErrors _errors = new();
     private readonly Dictionary<string, object> _variables = new();
 
-    // Track variables added to base template to prevent duplicates
-    private readonly HashSet<string> _variablesAddedToBase = new();
-
     // Dictionary to store custom range interpreters by sheet
     private readonly Dictionary<string, CustomRangeInterpreter> _interpreters = new();
+    private readonly List<string> _variablesAddedToBase = new();
 
     public bool IsDisposed { get; private set; }
 
     public IXLWorkbook Workbook { get; private set; }
-
+    
     /// <summary>
     /// Initializes a new instance from a file
     /// </summary>

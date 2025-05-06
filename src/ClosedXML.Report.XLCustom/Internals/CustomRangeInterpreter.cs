@@ -18,7 +18,7 @@ internal class CustomRangeInterpreter : RangeInterpreter
         {
             if (_baseEvaluator == null)
             {
-                // 리플렉션으로 기본 평가자 가져오기
+                // Get base evaluator via reflection
                 var fieldInfo = typeof(RangeInterpreter).GetField("_evaluator",
                     BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -44,14 +44,12 @@ internal class CustomRangeInterpreter : RangeInterpreter
         _errors = errors ?? throw new ArgumentNullException(nameof(errors));
     }
 
-    // 값 평가 오버라이드 - 핵심 기능
+    // Override value evaluation - core functionality
     public override void EvaluateValues(IXLRange range, params Parameter[] pars)
     {
-        Debug.WriteLine($"CustomRangeInterpreter.EvaluateValues: 범위 {range.RangeAddress}에서 확장 표현식 평가");
-
         try
         {
-            // 변수가 글로벌 리졸버에 있는지 먼저 확인해서 추가
+            // First check if variables exist in the global resolver
             foreach (var par in pars)
             {
                 if (_template.TryResolveGlobal(par.ParameterExpression.Name, out var value))
@@ -60,13 +58,13 @@ internal class CustomRangeInterpreter : RangeInterpreter
                 }
             }
 
-            // 기본 구현 호출 - 일반적인 ClosedXML.Report 표현식 처리
+            // Call base implementation - handles standard ClosedXML.Report expressions
             base.EvaluateValues(range, pars);
 
-            // 확장 표현식 처리
+            // Process enhanced expressions
             var customEvaluator = new CustomFormulaEvaluator(_template, BaseEvaluator);
 
-            // 확장 표현식이 있는 셀 검색
+            // Find cells with enhanced expressions
             var enhancedCells = range.CellsUsed(cell =>
             {
                 var value = cell.GetString();
@@ -77,37 +75,33 @@ internal class CustomRangeInterpreter : RangeInterpreter
             {
                 string cellValue = cell.GetString();
 
-                // 셀이 여전히 확장 표현식을 포함하는지 확인
-                // (기본 처리 후에도 남아있는지)
+                // Check if cell still contains enhanced expressions
+                // (after base processing)
                 if (cellValue.Contains("{{") && (cellValue.Contains(":") || cellValue.Contains("|")))
                 {
-                    Debug.WriteLine($"Processing enhanced expression in cell {cell.Address}: {cellValue}");
-
                     try
                     {
-                        // 표현식 평가
+                        // Evaluate expression
                         var result = customEvaluator.Evaluate(cellValue, cell, pars);
 
-                        // 값 설정
+                        // Set value
                         if (result != null)
                         {
                             if (cellValue.StartsWith("&="))
                             {
-                                // 수식은 FormulaA1로 설정
+                                // Formula should be set as FormulaA1
                                 cell.FormulaA1 = result.ToString();
                             }
                             else
                             {
-                                // 일반 값은 Value로 설정
+                                // Regular value
                                 cell.SetValue(result);
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Error processing cell {cell.Address}: {ex.Message}");
-
-                        // 오류 표시
+                        // Show error
                         _errors.Add(new TemplateError(
                             $"Error processing enhanced expression in cell {cell.Address}: {ex.Message}",
                             range.Worksheet.Range(cell.Address, cell.Address)));
@@ -117,11 +111,53 @@ internal class CustomRangeInterpreter : RangeInterpreter
                     }
                 }
             }
+
+            // Process collection metadata expressions - like Count
+            ProcessCollectionMetadata(range, pars);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error in EvaluateValues: {ex.Message}");
             _errors.Add(new TemplateError($"Error evaluating range: {ex.Message}", range));
+        }
+    }
+
+    /// <summary>
+    /// Process collection metadata like {{Collection.Count}}
+    /// </summary>
+    private void ProcessCollectionMetadata(IXLRange range, Parameter[] pars)
+    {
+        // Find cells with collection metadata patterns
+        var metadataCells = range.CellsUsed(cell =>
+        {
+            var value = cell.GetString();
+            return value.Contains("{{") && value.Contains(".Count") && value.Contains("}}");
+        });
+
+        foreach (var cell in metadataCells)
+        {
+            string cellValue = cell.GetString();
+
+            // Simple regex to find collection metadata expressions
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                cellValue, @"\{\{([^{}\.]+)\.Count\}\}");
+
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                string collectionName = match.Groups[1].Value;
+
+                // Try to get the collection from variables
+                if (_template.TryGetCollection(collectionName, out var collection))
+                {
+                    int count = collection.Count;
+                    cellValue = cellValue.Replace(match.Value, count.ToString());
+                }
+            }
+
+            // Update cell with processed value
+            if (cellValue != cell.GetString())
+            {
+                cell.Value = cellValue;
+            }
         }
     }
 }

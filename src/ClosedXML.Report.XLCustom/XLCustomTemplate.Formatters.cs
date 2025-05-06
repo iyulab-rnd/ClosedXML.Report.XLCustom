@@ -41,7 +41,6 @@
             _formatDelegates.Remove(name);
 
             _formatters[name] = formatter;
-            Debug.WriteLine($"Registered format implementation: {name}");
         }
 
         /// <summary>
