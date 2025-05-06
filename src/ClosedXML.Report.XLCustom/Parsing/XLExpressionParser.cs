@@ -1,16 +1,14 @@
-﻿using System.Text.RegularExpressions;
-
-namespace ClosedXML.Report.XLCustom.Parsing;
+﻿namespace ClosedXML.Report.XLCustom.Parsing;
 
 /// <summary>
 /// Parser for enhanced expression syntax
 /// </summary>
-internal static class ExpressionParser
+internal static class XLExpressionParser
 {
-    private static readonly Regex ExpressionRegex = new(@"\{\{([^{}]+)\}\}", RegexOptions.Compiled);
-    private static readonly Regex FormatRegex = new(@"^(.+?):(.+)$", RegexOptions.Compiled);
-    private static readonly Regex FunctionRegex = new(@"^(.+?)\|(.+)$", RegexOptions.Compiled);
-    private static readonly Regex ParametersRegex = new(@"^(\w+)(?:\(([^)]*)\))?$", RegexOptions.Compiled);
+    private static readonly Regex ExpressionRegex = new Regex(@"\{\{([^{}]+)\}\}", RegexOptions.Compiled);
+    private static readonly Regex FormatRegex = new Regex(@"^(.+?):(.+)$", RegexOptions.Compiled);
+    private static readonly Regex FunctionRegex = new Regex(@"^(.+?)\|(.+)$", RegexOptions.Compiled);
+    private static readonly Regex ParametersRegex = new Regex(@"^(\w+)(?:\(([^)]*)\))?$", RegexOptions.Compiled);
 
     /// <summary>
     /// Extracts all expressions from a given text
@@ -34,15 +32,12 @@ internal static class ExpressionParser
         if (string.IsNullOrEmpty(expression))
             throw new ArgumentException("Expression cannot be null or empty", nameof(expression));
 
-        Debug.WriteLine($"Parsing expression: {expression}");
-
         // Extract content between {{ and }}
         var match = ExpressionRegex.Match(expression);
         if (!match.Success)
             throw new ArgumentException($"Invalid expression format: {expression}", nameof(expression));
 
         var content = match.Groups[1].Value.Trim();
-        Debug.WriteLine($"Extracted content: {content}");
 
         // Check if it's a function expression (contains | )
         var functionMatch = FunctionRegex.Match(content);
@@ -50,7 +45,6 @@ internal static class ExpressionParser
         {
             var variable = functionMatch.Groups[1].Value.Trim();
             var functionPart = functionMatch.Groups[2].Value.Trim();
-            Debug.WriteLine($"Found function expression: variable={variable}, function={functionPart}");
 
             var paramsMatch = ParametersRegex.Match(functionPart);
             if (paramsMatch.Success)
@@ -60,10 +54,8 @@ internal static class ExpressionParser
                     ? ParseParameters(paramsMatch.Groups[2].Value)
                     : Array.Empty<string>();
 
-                Debug.WriteLine($"Parsed function: name={functionName}, params={(parameters.Length > 0 ? string.Join(", ", parameters) : "none")}");
-
                 return new ParsedExpression(
-                    ExpressionType.Function,
+                    XLExpressionType.Function,
                     variable,
                     functionName,
                     parameters,
@@ -71,9 +63,8 @@ internal static class ExpressionParser
             }
 
             // If no parameters pattern, treat the whole thing as the function name
-            Debug.WriteLine($"Parsed function without params: name={functionPart}");
             return new ParsedExpression(
-                ExpressionType.Function,
+                XLExpressionType.Function,
                 variable,
                 functionPart,
                 Array.Empty<string>(),
@@ -86,7 +77,6 @@ internal static class ExpressionParser
         {
             var variable = formatMatch.Groups[1].Value.Trim();
             var formatPart = formatMatch.Groups[2].Value.Trim();
-            Debug.WriteLine($"Found format expression: variable={variable}, format={formatPart}");
 
             var paramsMatch = ParametersRegex.Match(formatPart);
             if (paramsMatch.Success)
@@ -96,10 +86,8 @@ internal static class ExpressionParser
                     ? ParseParameters(paramsMatch.Groups[2].Value)
                     : Array.Empty<string>();
 
-                Debug.WriteLine($"Parsed format: name={formatName}, params={(parameters.Length > 0 ? string.Join(", ", parameters) : "none")}");
-
                 return new ParsedExpression(
-                    ExpressionType.Format,
+                    XLExpressionType.Format,
                     variable,
                     formatName,
                     parameters,
@@ -107,9 +95,8 @@ internal static class ExpressionParser
             }
 
             // If no parameters pattern, treat the whole thing as the format name
-            Debug.WriteLine($"Parsed format without params: name={formatPart}");
             return new ParsedExpression(
-                ExpressionType.Format,
+                XLExpressionType.Format,
                 variable,
                 formatPart,
                 Array.Empty<string>(),
@@ -122,13 +109,11 @@ internal static class ExpressionParser
             string[] parts = content.Split(new string[] { "." }, StringSplitOptions.None);
             if (parts.Length == 2 && parts[1] == "Count")
             {
-                Debug.WriteLine($"Found collection metadata: {parts[0]}.Count");
-
-                // 변환된 변수명 반환
+                // Convert to variable name
                 string countVarName = $"{parts[0]}_Count";
 
                 return new ParsedExpression(
-                    ExpressionType.Standard,
+                    XLExpressionType.Standard,
                     countVarName,
                     null,
                     Array.Empty<string>(),
@@ -137,9 +122,8 @@ internal static class ExpressionParser
         }
 
         // Standard variable expression
-        Debug.WriteLine($"Parsed standard variable: {content}");
         return new ParsedExpression(
-            ExpressionType.Standard,
+            XLExpressionType.Standard,
             content,
             null,
             Array.Empty<string>(),
@@ -153,8 +137,6 @@ internal static class ExpressionParser
     {
         if (string.IsNullOrEmpty(parametersString))
             return Array.Empty<string>();
-
-        Debug.WriteLine($"Parsing parameters: {parametersString}");
 
         // Split by commas, but handle key=value pairs and quoted strings
         var parameters = new List<string>();
@@ -181,16 +163,83 @@ internal static class ExpressionParser
         if (!string.IsNullOrEmpty(current))
             parameters.Add(current.Trim());
 
-        var result = parameters.Select(p => p.Trim()).ToArray();
-        Debug.WriteLine($"Parsed {result.Length} parameters: {string.Join(", ", result)}");
-        return result;
+        return parameters.Select(p => p.Trim()).ToArray();
     }
 
+    /// <summary>
+    /// Checks if the text contains an enhanced expression
+    /// </summary>
     public static bool IsEnhancedExpression(string text)
     {
         if (string.IsNullOrEmpty(text))
             return false;
 
         return text.Contains("{{") && (text.Contains(":") || text.Contains("|"));
+    }
+}
+
+/// <summary>
+/// Represents the type of expression
+/// </summary>
+internal enum XLExpressionType
+{
+    /// <summary>
+    /// Standard variable expression (e.g., {{VariableName}})
+    /// </summary>
+    Standard,
+
+    /// <summary>
+    /// Format expression (e.g., {{Value:format}})
+    /// </summary>
+    Format,
+
+    /// <summary>
+    /// Function expression (e.g., {{Value|function}})
+    /// </summary>
+    Function
+}
+
+/// <summary>
+/// Represents a parsed expression from a template
+/// </summary>
+internal class ParsedExpression
+{
+    /// <summary>
+    /// Gets the expression type
+    /// </summary>
+    public XLExpressionType Type { get; }
+
+    /// <summary>
+    /// Gets the variable part of the expression
+    /// </summary>
+    public string Variable { get; }
+
+    /// <summary>
+    /// Gets the format or function name
+    /// </summary>
+    public string Operation { get; }
+
+    /// <summary>
+    /// Gets the parameters for the format or function
+    /// </summary>
+    public string[] Parameters { get; }
+
+    /// <summary>
+    /// Gets the original expression string
+    /// </summary>
+    public string OriginalExpression { get; }
+
+    public ParsedExpression(
+        XLExpressionType type,
+        string variable,
+        string operation,
+        string[] parameters,
+        string originalExpression)
+    {
+        Type = type;
+        Variable = variable;
+        Operation = operation;
+        Parameters = parameters;
+        OriginalExpression = originalExpression;
     }
 }

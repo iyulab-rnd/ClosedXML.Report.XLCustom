@@ -1,358 +1,327 @@
-﻿namespace ClosedXML.Report.XLCustom.Internals;
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using ClosedXML.Excel;
+using ClosedXML.Report.Utils;
 
-/// <summary>
-/// Enhanced formula evaluator for custom templates
-/// </summary>
-internal class CustomFormulaEvaluator
+namespace ClosedXML.Report.XLCustom.Internals
 {
-    private readonly XLCustomTemplate _template;
-    private readonly FormulaEvaluator _baseEvaluator;
-
-    public CustomFormulaEvaluator(XLCustomTemplate template, FormulaEvaluator baseEvaluator)
-    {
-        _template = template ?? throw new ArgumentNullException(nameof(template));
-        _baseEvaluator = baseEvaluator;
-    }
-
     /// <summary>
-    /// Evaluates a formula, including enhanced expressions
+    /// Enhanced formula evaluator for custom templates
     /// </summary>
-    public object Evaluate(string formula, IXLCell cell, params Parameter[] parameters)
+    internal class CustomFormulaEvaluator
     {
-        if (string.IsNullOrEmpty(formula))
+        private readonly XLCustomTemplate _template;
+        private readonly FormulaEvaluator _baseEvaluator;
+
+        /// <summary>
+        /// Initializes a new custom formula evaluator
+        /// </summary>
+        public CustomFormulaEvaluator(XLCustomTemplate template, FormulaEvaluator baseEvaluator)
         {
-            return formula;
+            _template = template ?? throw new ArgumentNullException(nameof(template));
+            _baseEvaluator = baseEvaluator;
         }
 
-        if (!formula.Contains("{{"))
+        /// <summary>
+        /// Evaluates a formula, including enhanced expressions
+        /// </summary>
+        public object Evaluate(string formula, IXLCell cell, params Parameter[] parameters)
         {
-            return formula;
-        }
-
-        try
-        {
-            Debug.WriteLine($"Evaluating formula: {formula} for cell {cell?.Address}");
-
-            // Extract all expressions from the formula
-            var expressions = ExpressionParser.ExtractExpressions(formula).ToList();
-
-            if (expressions.Count == 0)
+            if (string.IsNullOrEmpty(formula))
             {
                 return formula;
             }
 
-            // If the formula is a single expression
-            if (expressions.Count == 1 && expressions[0] == formula)
+            if (!formula.Contains("{{"))
             {
-                var parsedExpr = ExpressionParser.Parse(formula);
-                Debug.WriteLine($"Parsed expression: Type={parsedExpr.Type}, Variable={parsedExpr.Variable}, Operation={parsedExpr.Operation}");
-
-                switch (parsedExpr.Type)
-                {
-                    case ExpressionType.Format:
-                        return EvaluateFormatExpression(parsedExpr, parameters);
-
-                    case ExpressionType.Function:
-                        return EvaluateFunctionExpression(parsedExpr, cell, parameters);
-
-                    default:
-                        // 표준 표현식 먼저 시도
-                        try
-                        {
-                            if (_baseEvaluator != null)
-                            {
-                                var result = _baseEvaluator.Evaluate(formula, parameters);
-                                Debug.WriteLine($"Base evaluator result: {result}");
-                                return result;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"Base evaluator failed: {ex.Message}");
-                        }
-
-                        // 변수 해결 시도
-                        var varResult = ResolveStandardExpression(parsedExpr.Variable, parameters);
-                        Debug.WriteLine($"Variable resolution result: {varResult}");
-                        return varResult;
-                }
+                return formula;
             }
 
-            // For multiple expressions, process each one
-            var finalResult = formula;
-            Debug.WriteLine($"Processing multiple expressions in formula");
-
-            foreach (var expr in expressions)
+            try
             {
-                var parsedExpr = ExpressionParser.Parse(expr);
-                object value;
+                // Extract all expressions from the formula
+                var expressions = XLExpressionParser.ExtractExpressions(formula).ToList();
 
-                switch (parsedExpr.Type)
+                if (expressions.Count == 0)
                 {
-                    case ExpressionType.Format:
-                        value = EvaluateFormatExpression(parsedExpr, parameters);
-                        Debug.WriteLine($"Format expression result: {value}");
-                        break;
+                    return formula;
+                }
 
-                    case ExpressionType.Function:
-                        value = EvaluateFunctionExpression(parsedExpr, cell, parameters);
-                        Debug.WriteLine($"Function expression result: {value}");
-                        break;
+                // If the formula is a single expression
+                if (expressions.Count == 1 && expressions[0] == formula)
+                {
+                    var parsedExpr = XLExpressionParser.Parse(formula);
 
-                    default:
-                        try
-                        {
-                            if (_baseEvaluator != null)
+                    switch (parsedExpr.Type)
+                    {
+                        case XLExpressionType.Format:
+                            return EvaluateFormatExpression(parsedExpr, parameters);
+
+                        case XLExpressionType.Function:
+                            return EvaluateFunctionExpression(parsedExpr, cell, parameters);
+
+                        default:
+                            // Try standard expression first
+                            try
                             {
-                                value = _baseEvaluator.Evaluate(expr, parameters);
-                                Debug.WriteLine($"Base evaluator result: {value}");
+                                if (_baseEvaluator != null)
+                                {
+                                    var result = _baseEvaluator.Evaluate(formula, parameters);
+                                    return result;
+                                }
                             }
-                            else
+                            catch (Exception)
+                            {
+                                // Fallback to variable resolution
+                            }
+
+                            // Try to resolve variable
+                            var varResult = ResolveStandardExpression(parsedExpr.Variable, parameters);
+                            return varResult;
+                    }
+                }
+
+                // For multiple expressions, process each one
+                var finalResult = formula;
+                List<string> processedExpressions = new List<string>();
+
+                foreach (var expr in expressions)
+                {
+                    // Skip expressions already processed to avoid infinite recursion
+                    if (processedExpressions.Contains(expr))
+                        continue;
+
+                    processedExpressions.Add(expr);
+
+                    var parsedExpr = XLExpressionParser.Parse(expr);
+                    object value;
+
+                    switch (parsedExpr.Type)
+                    {
+                        case XLExpressionType.Format:
+                            value = EvaluateFormatExpression(parsedExpr, parameters);
+                            break;
+
+                        case XLExpressionType.Function:
+                            value = EvaluateFunctionExpression(parsedExpr, cell, parameters);
+                            break;
+
+                        default:
+                            try
+                            {
+                                if (_baseEvaluator != null)
+                                {
+                                    value = _baseEvaluator.Evaluate(expr, parameters);
+                                }
+                                else
+                                {
+                                    value = ResolveStandardExpression(parsedExpr.Variable, parameters);
+                                }
+                            }
+                            catch (Exception)
                             {
                                 value = ResolveStandardExpression(parsedExpr.Variable, parameters);
-                                Debug.WriteLine($"Variable resolution result: {value}");
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"Evaluation failed: {ex.Message}");
-                            value = ResolveStandardExpression(parsedExpr.Variable, parameters);
-                        }
-                        break;
+                            break;
+                    }
+
+                    // Replace expression with value
+                    if (value != null)
+                    {
+                        finalResult = finalResult.Replace(expr, value.ToString() ?? string.Empty);
+                    }
                 }
 
-                // Replace expression with value
-                if (value != null)
+                return finalResult;
+            }
+            catch (Exception ex)
+            {
+                // Display error
+                if (cell != null)
                 {
-                    finalResult = finalResult.Replace(expr, value.ToString() ?? string.Empty);
-                    Debug.WriteLine($"Replaced expression. New result: {finalResult}");
+                    try
+                    {
+                        var comment = cell.GetComment();
+                        comment.AddText($"Error: {ex.Message}");
+                    }
+                    catch
+                    {
+                        // Ignore comment failure
+                    }
+                }
+
+                return $"Error: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Resolves standard variable expression
+        /// </summary>
+        private object ResolveStandardExpression(string variableName, Parameter[] parameters)
+        {
+            // Check for arithmetic expression
+            if (variableName.Contains(" * ") || variableName.Contains(" / ") ||
+                variableName.Contains(" + ") || variableName.Contains(" - "))
+            {
+                var result = _template.EvaluateFormula(variableName);
+                return result;
+            }
+
+            // Look in parameters first with exact match
+            foreach (var param in parameters.Where(p => p.ParameterExpression != null))
+            {
+                if (string.Equals(param.ParameterExpression.Name, variableName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return param.Value;
                 }
             }
 
-            return finalResult;
+            // Resolve directly from template
+            var value = _template.ResolveVariable(variableName);
+            if (value != null)
+            {
+                return value;
+            }
+
+            // If not found, return original expression
+            return $"{{{{{variableName}}}}}";
         }
-        catch (Exception ex)
+
+        /// <summary>
+        /// Evaluates format expression ({{value:format}})
+        /// </summary>
+        private object EvaluateFormatExpression(ParsedExpression expression, Parameter[] parameters)
         {
-            // Display error
-            Debug.WriteLine($"Error evaluating formula: {ex.Message}");
-            if (cell != null)
+            // First evaluate the variable part
+            var varExpr = $"{{{{{expression.Variable}}}}}";
+            object value;
+
+            try
+            {
+                if (_baseEvaluator != null)
+                {
+                    value = _baseEvaluator.Evaluate(varExpr, parameters);
+                }
+                else
+                {
+                    value = ResolveStandardExpression(expression.Variable, parameters);
+                }
+            }
+            catch
+            {
+                value = ResolveStandardExpression(expression.Variable, parameters);
+            }
+
+            // Check if value is still an expression
+            if (value is string strValue && strValue.StartsWith("{{") && strValue.EndsWith("}}"))
+            {
+                // Expression evaluation failed, try special handling
+
+                // Try formula evaluation (e.g. item.Price * 1.1)
+                if (expression.Variable.Contains(" * ") || expression.Variable.Contains(" / ") ||
+                    expression.Variable.Contains(" + ") || expression.Variable.Contains(" - "))
+                {
+                    value = _template.EvaluateFormula(expression.Variable);
+                }
+            }
+
+            // Look for formatter
+            if (_template.TryGetFormatter(expression.Operation, out var formatter))
             {
                 try
                 {
-                    var comment = cell.GetComment();
-                    comment.AddText($"Error: {ex.Message}");
+                    var result = formatter(value, expression.Parameters);
+                    return result;
                 }
-                catch
+                catch (Exception)
                 {
-                    // Ignore comment failure
+                    return value;
                 }
             }
 
-            return $"Error: {ex.Message}";
-        }
-    }
-
-    /// <summary>
-    /// Resolves standard variable expression
-    /// </summary>
-    private object ResolveStandardExpression(string variableName, Parameter[] parameters)
-    {
-        Debug.WriteLine($"Resolving standard expression: {variableName}");
-
-        // 수식에 '*' 이 포함된 경우 (예: item.Price * 1.1)
-        if (variableName.Contains(" * ") || variableName.Contains(" / ") ||
-            variableName.Contains(" + ") || variableName.Contains(" - "))
-        {
-            var result = _template.EvaluateFormula(variableName);
-            Debug.WriteLine($"Formula evaluation result: {result}");
-            return result;
-        }
-
-        // Look in parameters
-        foreach (var param in parameters.Where(p => p.ParameterExpression != null))
-        {
-            if (param.ParameterExpression.Name == variableName)
+            // If no formatter found, try standard .NET formatting
+            if (value is IFormattable formattable)
             {
-                Debug.WriteLine($"Found in parameters: {param.Value}");
-                return param.Value;
+                try
+                {
+                    var result = formattable.ToString(expression.Operation, CultureInfo.CurrentCulture);
+                    return result;
+                }
+                catch (Exception)
+                {
+                    // Fall through if format fails
+                }
             }
-        }
 
-        // Resolve directly from template
-        var value = _template.ResolveVariable(variableName);
-        if (value != null)
-        {
-            Debug.WriteLine($"Resolved from template: {value}");
+            // If no formatter found, return original value
             return value;
         }
 
-        // If not found, return original expression
-        Debug.WriteLine($"Could not resolve: {variableName}");
-        return $"{{{{{variableName}}}}}";
-    }
-
-    /// <summary>
-    /// Evaluates format expression ({{value:format}})
-    /// </summary>
-    private object EvaluateFormatExpression(ParsedExpression expression, Parameter[] parameters)
-    {
-        Debug.WriteLine($"Evaluating format expression: {expression.OriginalExpression}");
-
-        // First evaluate the variable part
-        var varExpr = $"{{{{{expression.Variable}}}}}";
-        Debug.WriteLine($"Variable expression: {varExpr}");
-
-        object value;
-
-        try
+        /// <summary>
+        /// Evaluates function expression ({{value|function}})
+        /// </summary>
+        private object EvaluateFunctionExpression(ParsedExpression expression, IXLCell cell, Parameter[] parameters)
         {
-            if (_baseEvaluator != null)
-            {
-                value = _baseEvaluator.Evaluate(varExpr, parameters);
-                Debug.WriteLine($"Base evaluator result: {value}");
-            }
-            else
-            {
-                value = ResolveStandardExpression(expression.Variable, parameters);
-                Debug.WriteLine($"Standard expression resolution: {value}");
-            }
-        }
-        catch
-        {
-            value = ResolveStandardExpression(expression.Variable, parameters);
-            Debug.WriteLine($"Fallback resolution: {value}");
-        }
+            if (cell == null)
+                throw new ArgumentNullException(nameof(cell), "Cell is required for function execution");
 
-        // 값이 여전히 표현식 형태인지 확인
-        if (value is string strValue && strValue.StartsWith("{{") && strValue.EndsWith("}}"))
-        {
-            // 표현식 평가 실패, 특별 처리 시도
+            // First evaluate the variable part
+            var varExpr = $"{{{{{expression.Variable}}}}}";
+            object value;
 
-            // 수식 평가 (item.Price * 1.1 같은 형태)
-            if (expression.Variable.Contains(" * ") || expression.Variable.Contains(" / ") ||
-                expression.Variable.Contains(" + ") || expression.Variable.Contains(" - "))
-            {
-                value = _template.EvaluateFormula(expression.Variable);
-                Debug.WriteLine($"Formula evaluation result: {value}");
-            }
-        }
-
-        // Look for formatter
-        if (_template.TryGetFormatter(expression.Operation, out var formatter))
-        {
             try
             {
-                Debug.WriteLine($"Applying formatter: {expression.Operation}");
-                var result = formatter(value, expression.Parameters);
-                Debug.WriteLine($"Formatter result: {result}");
-                return result;
+                if (_baseEvaluator != null)
+                {
+                    value = _baseEvaluator.Evaluate(varExpr, parameters);
+                }
+                else
+                {
+                    value = ResolveStandardExpression(expression.Variable, parameters);
+                }
+            }
+            catch
+            {
+                value = ResolveStandardExpression(expression.Variable, parameters);
+            }
+
+            // Check if value is still an expression
+            if (value is string strValue && strValue.StartsWith("{{") && strValue.EndsWith("}}"))
+            {
+                // Expression evaluation failed, try special handling
+
+                // Try formula evaluation (e.g. item.Price * 1.1)
+                if (expression.Variable.Contains(" * ") || expression.Variable.Contains(" / ") ||
+                    expression.Variable.Contains(" + ") || expression.Variable.Contains(" - "))
+                {
+                    value = _template.EvaluateFormula(expression.Variable);
+                }
+            }
+
+            // Look for function
+            if (!_template.TryGetFunction(expression.Operation, out var function))
+            {
+                return $"Unknown function '{expression.Operation}'";
+            }
+
+            // Apply function
+            try
+            {
+                // Clone the cell to avoid modifying the original
+                var tempCell = cell;
+
+                // Call function
+                function(tempCell, value, expression.Parameters);
+
+                // Return cell value
+                return tempCell.Value;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Formatter error: {ex.Message}");
-                return value;
+                return $"Error: {ex.Message}";
             }
-        }
-
-        // If no formatter found, try standard .NET formatting
-        if (value is IFormattable formattable)
-        {
-            try
-            {
-                Debug.WriteLine($"Applying standard format: {expression.Operation}");
-                var result = formattable.ToString(expression.Operation, System.Globalization.CultureInfo.CurrentCulture);
-                Debug.WriteLine($"Formatting result: {result}");
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Format error: {ex.Message}");
-                // Fall through if format fails
-            }
-        }
-
-        // If no formatter found, return original value
-        return value;
-    }
-
-    /// <summary>
-    /// Evaluates function expression ({{value|function}})
-    /// </summary>
-    private object EvaluateFunctionExpression(ParsedExpression expression, IXLCell cell, Parameter[] parameters)
-    {
-        Debug.WriteLine($"Evaluating function expression: {expression.OriginalExpression}");
-
-        // First evaluate the variable part
-        var varExpr = $"{{{{{expression.Variable}}}}}";
-        object value;
-
-        try
-        {
-            if (_baseEvaluator != null)
-            {
-                value = _baseEvaluator.Evaluate(varExpr, parameters);
-                Debug.WriteLine($"Base evaluator result: {value}");
-            }
-            else
-            {
-                value = ResolveStandardExpression(expression.Variable, parameters);
-                Debug.WriteLine($"Standard expression resolution: {value}");
-            }
-        }
-        catch
-        {
-            value = ResolveStandardExpression(expression.Variable, parameters);
-            Debug.WriteLine($"Fallback resolution: {value}");
-        }
-
-        // 값이 여전히 표현식 형태인지 확인
-        if (value is string strValue && strValue.StartsWith("{{") && strValue.EndsWith("}}"))
-        {
-            // 표현식 평가 실패, 특별 처리 시도
-
-            // 수식 평가 (item.Price * 1.1 같은 형태)
-            if (expression.Variable.Contains(" * ") || expression.Variable.Contains(" / ") ||
-                expression.Variable.Contains(" + ") || expression.Variable.Contains(" - "))
-            {
-                value = _template.EvaluateFormula(expression.Variable);
-                Debug.WriteLine($"Formula evaluation result: {value}");
-            }
-        }
-
-        // Look for function
-        if (!_template.TryGetFunction(expression.Operation, out var function))
-        {
-            Debug.WriteLine($"Function not found: {expression.Operation}");
-            return $"Unknown function '{expression.Operation}'";
-        }
-
-        // Apply function
-        try
-        {
-            Debug.WriteLine($"Applying function: {expression.Operation}");
-
-            // Create target cell
-            var targetCell = cell is null
-                ? null  // We can't create a default cell safely
-                : cell;  // Provided cell
-
-            if (targetCell == null)
-            {
-                Debug.WriteLine("No target cell provided");
-                return value;
-            }
-
-            // Call function
-            function(targetCell, value, expression.Parameters);
-            Debug.WriteLine($"Function applied. Cell value: {targetCell.Value}");
-
-            // Return cell value
-            return targetCell.Value;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Function error: {ex.Message}");
-            return $"Error: {ex.Message}";
         }
     }
 }

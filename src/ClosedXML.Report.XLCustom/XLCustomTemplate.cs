@@ -1,150 +1,302 @@
-﻿namespace ClosedXML.Report.XLCustom;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text;
+using ClosedXML.Excel;
+using ClosedXML.Report.Excel;
+using ClosedXML.Report.Options;
+using ClosedXML.Report.Utils;
 
-/// <summary>
-/// Extended template class that provides advanced customization capabilities
-/// while maintaining compatibility with ClosedXML.Report
-/// </summary>
-public partial class XLCustomTemplate : IXLTemplate
+namespace ClosedXML.Report.XLCustom
 {
-    private readonly XLTemplate _baseTemplate;
-    private readonly bool _disposeWorkbookWithTemplate;
-    private readonly TemplateErrors _errors = new();
-    private readonly Dictionary<string, object> _variables = new();
-
-    // Dictionary to store custom range interpreters by sheet
-    private readonly Dictionary<string, CustomRangeInterpreter> _interpreters = new();
-    private readonly List<string> _variablesAddedToBase = new();
-
-    public bool IsDisposed { get; private set; }
-
-    public IXLWorkbook Workbook { get; private set; }
-    
     /// <summary>
-    /// Initializes a new instance from a file
+    /// Enhanced template engine that provides customization capabilities
+    /// while maintaining compatibility with ClosedXML.Report
     /// </summary>
-    public XLCustomTemplate(string fileName) : this(new XLWorkbook(fileName))
+    public partial class XLCustomTemplate : IXLTemplate
     {
-        _disposeWorkbookWithTemplate = true;
-    }
+        private readonly bool _disposeWorkbookWithTemplate;
+        private readonly TemplateErrors _errors = new TemplateErrors();
+        private readonly FormulaEvaluator _evaluator;
+        private readonly CustomFormulaEvaluator _customEvaluator;
+        private RangeInterpreter _interpreter;
 
-    /// <summary>
-    /// Initializes a new instance from a stream
-    /// </summary>
-    public XLCustomTemplate(Stream stream) : this(new XLWorkbook(stream))
-    {
-        _disposeWorkbookWithTemplate = true;
-    }
+        private readonly Dictionary<string, object> _variables = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _addedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private bool _interpreterInitialized = false;
 
-    /// <summary>
-    /// Initializes a new instance from an existing workbook
-    /// </summary>
-    public XLCustomTemplate(IXLWorkbook workbook)
-    {
-        Workbook = workbook ?? throw new ArgumentNullException(nameof(workbook));
+        /// <summary>
+        /// Gets the Excel workbook associated with this template
+        /// </summary>
+        public IXLWorkbook Workbook { get; private set; }
 
-        // Create the base ClosedXML.Report template
-        _baseTemplate = new XLTemplate(Workbook);
+        /// <summary>
+        /// Gets whether this template has been disposed
+        /// </summary>
+        public bool IsDisposed { get; private set; }
 
-        // Initialize custom processors
-        InitializeCustomProcessors();
-    }
-
-    /// <summary>
-    /// Initializes custom tag processors
-    /// </summary>
-    private void InitializeCustomProcessors()
-    {
-        try
+        /// <summary>
+        /// Initializes a new instance from a file
+        /// </summary>
+        public XLCustomTemplate(string fileName)
+            : this(new XLWorkbook(fileName))
         {
-            // Get access to RangeProcessor in base template
-            var rangeProcessorField = typeof(XLTemplate).GetField("_rangeProcessor",
-                BindingFlags.NonPublic | BindingFlags.Instance);
+            _disposeWorkbookWithTemplate = true;
+        }
 
-            if (rangeProcessorField != null)
+        /// <summary>
+        /// Initializes a new instance from a stream
+        /// </summary>
+        public XLCustomTemplate(Stream stream)
+            : this(new XLWorkbook(stream))
+        {
+            _disposeWorkbookWithTemplate = true;
+        }
+
+        /// <summary>
+        /// Initializes a new instance from an existing workbook
+        /// </summary>
+        public XLCustomTemplate(IXLWorkbook workbook)
+        {
+            // Register all the standard tags
+            RegisterStandardTags();
+
+            Workbook = workbook ?? throw new ArgumentNullException(nameof(workbook));
+
+            // Initialize evaluator
+            _evaluator = new FormulaEvaluator();
+
+            // Setup custom formula evaluator that integrates with the template
+            _customEvaluator = new CustomFormulaEvaluator(this, _evaluator);
+
+            // Initialize interpreter without adding variables yet
+            _interpreter = new RangeInterpreter(null, _errors);
+
+            // Register custom resolver for the evaluator through the evaluator
+            _evaluator.SetGlobalResolver(variableName => ResolveVariable(variableName));
+
+            // Register built-in formatters and functions
+            RegisterBuiltIns();
+        }
+
+        /// <summary>
+        /// Generates the report by processing all template expressions
+        /// </summary>
+        public XLGenerateResult Generate()
+        {
+            CheckIsDisposed();
+
+            try
             {
-                var processor = rangeProcessorField.GetValue(_baseTemplate);
+                // Process collection metadata expressions
+                ProcessCollectionMetadata();
 
-                if (processor != null)
+                // Preprocess enhanced expressions to make them compatible with base engine
+                PreprocessEnhancedExpressions();
+
+                // 모든 변수(임시 변수 포함)가 추가된 후 인터프리터 초기화
+                EnsureInterpreterInitialized();
+
+                // Process each visible worksheet
+                var worksheets = Workbook.Worksheets.Where(sh =>
+                    sh.Visibility == XLWorksheetVisibility.Visible &&
+                    !sh.PivotTables.Any()).ToList();
+
+                foreach (var worksheet in worksheets)
                 {
-                    // Register custom handlers if needed
-                    Debug.WriteLine("Custom processors initialized");
+                    worksheet.ReplaceCFFormulaeToR1C1();
+                    _interpreter.Evaluate(worksheet.AsRange());
+                    worksheet.ReplaceCFFormulaeToA1();
+                }
+
+                // Post-process any remaining enhanced expressions
+                PostprocessEnhancedExpressions();
+
+                return new XLGenerateResult(_errors);
+            }
+            catch (Exception ex)
+            {
+                _errors.Add(new TemplateError($"Unexpected error: {ex.Message}", null));
+                return new XLGenerateResult(_errors);
+            }
+        }
+
+        /// <summary>
+        /// Adds variables from an object
+        /// </summary>
+        public void AddVariable(object value)
+        {
+            CheckIsDisposed();
+
+            if (value is IDictionary dictionary)
+            {
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    AddVariable(entry.Key.ToString(), entry.Value);
+                }
+            }
+            else
+            {
+                var type = value.GetType();
+                var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(f => f.IsPublic)
+                    .Select(f => new { f.Name, val = f.GetValue(value), type = f.FieldType })
+                    .Concat(
+                        type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Where(f => f.CanRead)
+                            .Select(f => new
+                            {
+                                f.Name,
+                                val = f.GetValue(value, Array.Empty<object>()),
+                                type = f.PropertyType
+                            })
+                    );
+
+                foreach (var field in fields)
+                {
+                    AddVariable(field.Name, field.val);
                 }
             }
         }
-        catch (Exception ex)
+
+        /// <summary>
+        /// Adds a variable with a specific name
+        /// </summary>
+        public void AddVariable(string alias, object value)
         {
-            Debug.WriteLine($"Failed to initialize custom processors: {ex.Message}");
-            // Non-critical, continue with standard processing
-        }
-    }
+            CheckIsDisposed();
 
-    /// <summary>
-    /// Gets or creates a custom interpreter for a specific worksheet and alias
-    /// </summary>
-    internal CustomRangeInterpreter GetInterpreter(string sheetName, string alias = null)
-    {
-        string key = $"{sheetName}:{alias ?? string.Empty}";
+            // For primitive types and strings, store as-is without any conversion
+            if (value == null || value.GetType().IsPrimitive() || value is string)
+            {
+                // Store variable in our internal dictionary (overwrites if exists)
+                _variables[alias] = value;
 
-        if (!_interpreters.TryGetValue(key, out var interpreter))
-        {
-            interpreter = new CustomRangeInterpreter(alias, _errors, this);
-            _interpreters[key] = interpreter;
-        }
+                // Add to evaluator (overwrites if exists)
+                _evaluator.AddVariable(alias, value);
 
-        return interpreter;
-    }
+                // Mark interpreter as not initialized so variables will be updated
+                _interpreterInitialized = false;
 
-    /// <summary>
-    /// Creates a TemplateError with appropriate range
-    /// </summary>
-    private TemplateError CreateTemplateError(string message, IXLRange range = null)
-    {
-        // Create a dummy range if one is not provided
-        if (range == null)
-        {
-            var ws = Workbook.Worksheet(1);
-            if (ws == null && Workbook.Worksheets.Count > 0)
-                ws = Workbook.Worksheets.First();
+                return;
+            }
 
-            if (ws != null)
-                range = ws.Range("A1", "A1");
+            // For other types, store in our variables dictionary
+            _variables[alias] = value;
+
+            // Add to evaluator
+            _evaluator.AddVariable(alias, value);
+
+            // Mark interpreter as not initialized so variables will be updated
+            _interpreterInitialized = false;
         }
 
-        // If we still don't have a range, create a temporary one
-        if (range == null)
+        /// <summary>
+        /// Ensures that all variables are properly initialized in the RangeInterpreter
+        /// </summary>
+        private void EnsureInterpreterInitialized()
         {
-            var tempWorkbook = new XLWorkbook();
-            var tempWorksheet = tempWorkbook.AddWorksheet("Temp");
-            range = tempWorksheet.Range("A1", "A1");
+            if (_interpreterInitialized)
+                return;
+
+            // Create a new interpreter
+            _interpreter = new RangeInterpreter(null, _errors);
+            _addedVariables.Clear();
+
+            // Add all current variables
+            foreach (var kvp in _variables)
+            {
+                if (kvp.Value == null)
+                {
+                    // Null values can be added directly
+                    _interpreter.AddVariable(kvp.Key, null);
+                    _addedVariables.Add(kvp.Key);
+                    continue;
+                }
+
+                // Handle DataTable conversion for collections
+                object baseValue = kvp.Value;
+                if (baseValue is DataTable dt)
+                {
+                    baseValue = dt.Rows.Cast<DataRow>();
+                }
+                else if (baseValue is IEnumerable enumerable && !(baseValue is string))
+                {
+                    // Attempt to convert non-generic IEnumerable to a typed List
+                    var itemType = enumerable.GetItemType();
+                    if (itemType != typeof(object))
+                    {
+                        try
+                        {
+                            baseValue = ConvertToTypedList(enumerable, itemType);
+                        }
+                        catch
+                        {
+                            // If conversion fails, keep the original value
+                            baseValue = kvp.Value;
+                        }
+                    }
+                }
+
+                try
+                {
+                    // Add to interpreter
+                    _interpreter.AddVariable(kvp.Key, baseValue);
+                    _addedVariables.Add(kvp.Key);
+                }
+                catch (Exception ex)
+                {
+                    // Log error but continue with other variables
+                    _errors.Add(new TemplateError(
+                        $"Error adding variable '{kvp.Key}': {ex.Message}", null));
+                }
+            }
+
+            _interpreterInitialized = true;
         }
 
-        return new TemplateError(message, range);
-    }
-
-    /// <summary>
-    /// Disposes resources
-    /// </summary>
-    public void Dispose()
-    {
-        if (IsDisposed)
-            return;
-
-        if (_disposeWorkbookWithTemplate)
+        /// <summary>
+        /// Checks if template is disposed
+        /// </summary>
+        private void CheckIsDisposed()
         {
-            Workbook.Dispose();
-            _baseTemplate.Dispose();
+            if (IsDisposed)
+                throw new ObjectDisposedException("Template has been disposed");
         }
 
-        Workbook = null;
-        IsDisposed = true;
-    }
+        /// <summary>
+        /// Disposes of resources
+        /// </summary>
+        public void Dispose()
+        {
+            if (IsDisposed)
+                return;
 
-    /// <summary>
-    /// Checks if template is disposed
-    /// </summary>
-    private void CheckIsDisposed()
-    {
-        if (IsDisposed)
-            throw new ObjectDisposedException("Template has been disposed");
+            if (_disposeWorkbookWithTemplate)
+            {
+                Workbook?.Dispose();
+            }
+
+            Workbook = null;
+            IsDisposed = true;
+        }
+
+        /// <summary>
+        /// Converts an IEnumerable to a typed list
+        /// </summary>
+        private static IEnumerable ConvertToTypedList(IEnumerable enumerable, Type itemType)
+        {
+            var listType = typeof(List<>).MakeGenericType(itemType);
+            var list = (IList)Activator.CreateInstance(listType);
+
+            foreach (var item in enumerable)
+            {
+                list.Add(item);
+            }
+
+            return list;
+        }
     }
 }

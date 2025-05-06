@@ -1,6 +1,6 @@
 ﻿namespace ClosedXML.Report.XLCustom;
 
-public static class ExcelExtensions
+public static class XLExtensions
 {
     public static void SetValue(this IXLCell cell, object value)
     {
