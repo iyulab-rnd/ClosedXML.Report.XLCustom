@@ -1,4 +1,6 @@
-﻿namespace ClosedXML.Report.XLCustom
+﻿using static System.Runtime.InteropServices.JavaScript.JSType;
+
+namespace ClosedXML.Report.XLCustom
 {
     /// <summary>
     /// Function related functionality for XLCustomTemplate
@@ -19,8 +21,8 @@
             if (function == null)
                 throw new ArgumentNullException(nameof(function), "Function delegate cannot be null");
 
-            if (_functions.ContainsKey(name) || _functionDelegates.ContainsKey(name))
-                throw new ArgumentException($"A function with the name '{name}' is already registered", nameof(name));
+            _functions.Remove(name);
+            _functionDelegates.Remove(name);
 
             _functionDelegates[name] = function;
             Debug.WriteLine($"Registered function delegate: {name}");
@@ -37,8 +39,8 @@
             if (function == null)
                 throw new ArgumentNullException(nameof(function), "Function implementation cannot be null");
 
-            if (_functions.ContainsKey(name) || _functionDelegates.ContainsKey(name))
-                throw new ArgumentException($"A function with the name '{name}' is already registered", nameof(name));
+            _functions.Remove(name);
+            _functionDelegates.Remove(name);
 
             _functions[name] = function;
             Debug.WriteLine($"Registered function implementation: {name}");

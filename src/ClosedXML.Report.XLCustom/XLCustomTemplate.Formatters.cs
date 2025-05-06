@@ -19,8 +19,8 @@
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter), "Formatter function cannot be null");
 
-            if (_formatters.ContainsKey(name) || _formatDelegates.ContainsKey(name))
-                throw new ArgumentException($"A formatter with the name '{name}' is already registered", nameof(name));
+            _formatters.Remove(name);
+            _formatDelegates.Remove(name);
 
             _formatDelegates[name] = formatter;
             Debug.WriteLine($"Registered format delegate: {name}");
@@ -37,8 +37,8 @@
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter), "Formatter implementation cannot be null");
 
-            if (_formatters.ContainsKey(name) || _formatDelegates.ContainsKey(name))
-                throw new ArgumentException($"A formatter with the name '{name}' is already registered", nameof(name));
+            _formatters.Remove(name);
+            _formatDelegates.Remove(name);
 
             _formatters[name] = formatter;
             Debug.WriteLine($"Registered format implementation: {name}");

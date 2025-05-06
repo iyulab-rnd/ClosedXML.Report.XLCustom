@@ -1,4 +1,6 @@
-﻿namespace ClosedXML.Report.XLCustom.Internals
+﻿using System.Globalization;
+
+namespace ClosedXML.Report.XLCustom.Internals
 {
     /// <summary>
     /// Enhanced formula evaluator for custom templates
@@ -225,7 +227,8 @@
             {
                 try
                 {
-                    var result = formattable.ToString(expression.Operation, null);
+                    Debug.WriteLine($"Attempting standard .NET formatting with format string: '{expression.Operation}'");
+                    var result = formattable.ToString(expression.Operation, CultureInfo.CurrentCulture);
                     Debug.WriteLine($"Standard formatting result: '{result}'");
                     return result;
                 }
@@ -245,6 +248,10 @@
         /// </summary>
         private object EvaluateFunctionExpression(ParsedExpression expression, IXLCell cell, Parameter[] parameters)
         {
+            // Debug logging for function lookup
+            Debug.WriteLine($"Looking for function: '{expression.Operation}'");
+            Debug.WriteLine($"Available functions: {string.Join(", ", _template.GetRegisteredFunctions())}");
+
             // 먼저 변수 부분 평가
             var varExpr = $"{{{{{expression.Variable}}}}}";
             object value;
