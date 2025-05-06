@@ -1,0 +1,13 @@
+﻿global using ClosedXML.Excel;
+global using ClosedXML.Report.Excel;
+global using ClosedXML.Report.Options;
+global using ClosedXML.Report.Utils;
+global using System.Collections;
+global using System.Diagnostics;
+global using System.Linq.Dynamic.Core.Exceptions;
+global using System.Reflection;
+global using System.Data;
+global using ClosedXML.Report.XLCustom.Formatters;
+global using ClosedXML.Report.XLCustom.Functions;
+global using ClosedXML.Report.XLCustom.Parsing;
+global using ClosedXML.Report.XLCustom.Internals;
