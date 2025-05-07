@@ -149,23 +149,6 @@ In Excel template:
 <<EndRange>>
 ```
 
-## Global Variable Resolution
-
-Set up a global resolver for undefined variables:
-
-```csharp
-template.SetGlobalResolver(expression => {
-    return expression switch
-    {
-        "CurrentUser" => Environment.UserName,
-        "Today" => DateTime.Today,
-        _ => null
-    };
-});
-
-// In your template: {{CurrentUser}} - resolves automatically
-```
-
 ## Built-in Formatters and Functions
 
 ClosedXML.Report.XLCustom comes with several built-in formatters and functions that you can register:
@@ -187,7 +170,6 @@ template.RegisterBuiltInFunctions();
 | `lower` | Converts text to lowercase | `{{Text:lower}}` |
 | `titlecase` | Converts text to title case | `{{Text:titlecase}}` |
 | `mask` | Applies a mask to a value | `{{Phone:mask(###-###-####)}}` |
-| `phone` | Formats a phone number | `{{Phone:phone(+# (###) ###-####)}}` |
 | `truncate` | Truncates text to specified length | `{{Description:truncate(50,...)}}` |
 
 ### Built-in Functions

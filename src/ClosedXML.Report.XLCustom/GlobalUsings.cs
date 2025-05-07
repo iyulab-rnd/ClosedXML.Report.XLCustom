@@ -1,11 +1,3 @@
-﻿global using System.Collections;
-global using System.Reflection;
-global using System.Data;
-global using System.Text.RegularExpressions;
-global using System.Globalization;
+﻿global using System.Text.RegularExpressions;
 global using System.Text;
 global using ClosedXML.Excel;
-global using ClosedXML.Report.Excel;
-global using ClosedXML.Report.Utils;
-global using ClosedXML.Report.XLCustom.Parsing;
-global using ClosedXML.Report.XLCustom.Internals;
