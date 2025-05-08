@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
+    <PackageReference Include="Svg.Skia" Version="3.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\open-source\ClosedXML.Report\ClosedXML.Report\ClosedXML.Report.csproj" />
   </ItemGroup>
 

@@ -1,30 +1,32 @@
 # ClosedXML.Report.XLCustom
 
-ClosedXML.Report.XLCustom extends [ClosedXML.Report](https://github.com/ClosedXML/ClosedXML.Report) with enhanced expression handling and template processing capabilities while maintaining full compatibility with the original library.
+ClosedXML.Report.XLCustom extends [ClosedXML.Report](https://github.com/ClosedXML/ClosedXML.Report) with enhanced expression handling capabilities while maintaining full compatibility with the original library.
 
 ## Overview
 
-ClosedXML.Report.XLCustom builds upon ClosedXML.Report, preserving its familiar syntax while adding powerful dynamic expression evaluation and formatting capabilities.
+ClosedXML.Report.XLCustom builds upon ClosedXML.Report, preserving its familiar syntax while adding powerful dynamic expression evaluation and cell manipulation features through a simple yet expressive syntax.
 
 ## Dependencies
 
 - [ClosedXML.Report](https://github.com/ClosedXML/ClosedXML.Report) - The base reporting library
 - [ClosedXML](https://github.com/ClosedXML/ClosedXML) - Excel spreadsheet manipulation library
-- .NET 8.0 or later
 
 ## Key Features
 
 - **Full ClosedXML.Report Compatibility**: Maintains all existing functionality and syntax:
   - Standard variables: `{{VariableName}}`
   - Property paths: `{{Object.Property.SubProperty}}`
-  - Collection processing: `<<Range(Collection)>>` with `{{item.Property}}`
-  - All template tags: `<<Range>>`, `<<Row>>`, `<<Group>>`, etc.
+  - All template tags from the original library
 
 - **Enhanced Expression Syntax**:
-  - Format expressions: `{{Value:format}}` for values with standard or custom formatting
-  - Function expressions: `{{Value|function(params)}}` for direct cell manipulation
+  - Format expressions: `{{Value:format}}` for values with standard .NET formatting
+  - Function expressions: `{{Value|function(param1,param2)}}` for direct cell manipulation
 
-- **Extensibility**: Register custom formats and functions programmatically
+- **Extensibility**: Register custom functions programmatically
+  - Global function registry for application-wide functions
+  - Local registry option for template-specific functions
+
+- **Error Handling**: Clear error indicators and messages in cells when expressions fail
 
 ## Installation
 
@@ -42,21 +44,25 @@ dotnet add package ClosedXML.Report.XLCustom
 
 ```csharp
 // Create a template from an existing Excel file
-var template = new XLCustomTemplate("template.xlsx");
+var options = new XLCustomTemplateOptions { 
+    UseGlobalRegistry = true,
+    RegisterBuiltInFunctions = true
+};
+var template = new XLCustomTemplate("template.xlsx", options);
 
-// Register built-in formatters and functions
+// Register built-in functions
 template.RegisterBuiltIns();
 
 // Add variables as in standard ClosedXML.Report
 template.AddVariable("Title", "Sales Report");
 template.AddVariable("Products", productList);
 
-// Register custom formats and functions
-template.RegisterFormat("upper", (value, parameters) => value?.ToString()?.ToUpper());
-template.RegisterFunction("style", (cell, value, parameters) => {
+// Register custom functions
+template.RegisterFunction("highlight", (cell, value, parameters) => {
     // Manipulate cell directly
+    cell.SetValue(value);
+    cell.Style.Fill.BackgroundColor = XLColor.Yellow;
     cell.Style.Font.Bold = true;
-    cell.Value = value;
 });
 
 // Generate the report
@@ -77,37 +83,26 @@ template.SaveAs("result.xlsx");
 
 ### 2. Format Expressions
 
-Format expressions use the colon (`:`) syntax:
+Format expressions use the colon (`:`) syntax with standard .NET format strings:
 
 ```
 {{Value:F2}}           // Numeric format with 2 decimal places
 {{Date:yyyy-MM-dd}}    // Date format
 {{Price:C}}            // Currency format
-{{Text:upper}}         // Custom "upper" formatter (converts to uppercase)
-```
-
-Register custom formatters:
-
-```csharp
-// Register a custom formatter
-template.RegisterFormat("upper", (value, parameters) => 
-    value?.ToString()?.ToUpper());
-
-// In your template: {{Text:upper}}
 ```
 
 ### 3. Function Expressions
 
-Function expressions use the pipe (`|`) syntax:
+Function expressions use the pipe (`|`) syntax with positional parameters:
 
 ```
-{{Value|style(bold, color=red)}}   // Apply bold red styling with parameters
-{{ImageUrl|image(width=150)}}      // Display image with width parameter
-{{LinkUrl|link}}                   // Link function with no parameters
+{{Value|function}}                 // Function with no parameters
+{{Value|style(bold,red)}}          // Apply styling with parameters
+{{ImageUrl|image(150)}}            // Display image with width parameter
+{{LinkUrl|link(Click here)}}       // Create link with display text
 ```
 
-Note: When a function has no parameters, the parentheses can be omitted (e.g., `{{Value|bold}}` instead of `{{Value|bold()}}`).
-
+Note: When a function has no parameters, the parentheses can be omitted.
 
 Register custom functions:
 
@@ -130,135 +125,108 @@ template.RegisterFunction("image", (cell, value, parameters) => {
 // In your template: {{LogoUrl|image(150)}}
 ```
 
-## Collection Processing
+## Built-in Functions
 
-ClosedXML.Report.XLCustom fully supports ClosedXML.Report's collection processing:
-
-```csharp
-// Add collection data
-template.AddVariable("Products", productList);
-```
-
-In Excel template:
-```
-<<Range(Products)>>
-  A{{Row}}: {{item.Name}}
-  B{{Row}}: {{item.Price}}
-  C{{Row}}: {{item.Price:C}}           // Format expression
-  D{{Row}}: {{item.Name|style(bold)}}  // Function expression
-<<EndRange>>
-```
-
-## Built-in Formatters and Functions
-
-ClosedXML.Report.XLCustom comes with several built-in formatters and functions that you can register:
+ClosedXML.Report.XLCustom comes with several built-in functions that you can register:
 
 ```csharp
-// Register all built-in formatters and functions
+// Register all built-in functions
 template.RegisterBuiltIns();
 
-// Or register them separately
-template.RegisterBuiltInFormatters();
+// Or register them individually
 template.RegisterBuiltInFunctions();
 ```
 
-### Built-in Formatters
-
-| Name | Description | Example |
-|------|-------------|---------|
-| `upper` | Converts text to uppercase | `{{Text:upper}}` |
-| `lower` | Converts text to lowercase | `{{Text:lower}}` |
-| `titlecase` | Converts text to title case | `{{Text:titlecase}}` |
-| `mask` | Applies a mask to a value | `{{Phone:mask(###-###-####)}}` |
-| `truncate` | Truncates text to specified length | `{{Description:truncate(50,...)}}` |
-
 ### Built-in Functions
 
+| Name | Description | Example | Parameters |
+|------|-------------|---------|------------|
+| `bold` | Makes text bold | `{{Text|bold}}` | None |
+| `italic` | Makes text italic | `{{Text|italic}}` | None |
+| `color` | Sets text color | `{{Text|color(Red)}}` | 1: Color name |
+| `link` | Creates a hyperlink | `{{Url|link(Click here)}}` | 1: Display text (optional) |
+| `image` | Displays an image | `{{ImagePath|image(100,100)}}` | 1: Width (optional), 2: Height (optional) |
+
+## Global vs Local Function Registry
+
+ClosedXML.Report.XLCustom supports two registry modes:
+
+```csharp
+// Global registry (default) - functions available to all templates
+var template1 = new XLCustomTemplate("template1.xlsx"); // useGlobalRegistry = true by default
+
+// Local registry - functions available only to this template
+var options = new XLCustomTemplateOptions { UseGlobalRegistry = false };
+var template2 = new XLCustomTemplate("template2.xlsx", options);
+
+// Reset the global registry if needed
+XLCustomRegistry.ResetFunctionRegistry();
+```
+
+## Error Handling
+
+When an expression fails to evaluate or a function encounters an error, the cell will show an error message in red text. This helps identify issues in your templates:
+
+- Variable evaluation errors: "Error: [error message]"
+- Unknown functions: "Unknown function: [name]" 
+- Function execution errors: "Function error: [error message]"
+
+## Implementation Details
+
+XLCustomTemplate automatically performs a preprocessing step on your Excel template to convert the enhanced expression syntax (like `{{Value:format}}` and `{{Value|function}}`) into compatible ClosedXML.Report tags:
+
+- Format expressions (`{{Value:format}}`) ¡æ `<<format name="Value" format="format">>`
+- Function expressions (`{{Value|function(params)}}`) ¡æ `<<customfunction name="Value" function="function" parameters="params">>`
+
+This preprocessing is done automatically when you call methods like `Generate()`, `AddVariable()`, or `SaveAs()`. You can also force preprocessing with the `Preprocess()` method.
+
+## Debugging
+
+For debugging purposes, you can test expression processing without applying it to a workbook:
+
+```csharp
+// Test expression processing
+string result = template.DebugExpression("{{Value|bold}}");
+Console.WriteLine(result); // Outputs: <<customfunction name="Value" function="bold">>
+```
+
+## Parameter Handling
+
+When using custom functions with multiple parameters, ClosedXML.Report.XLCustom properly handles parameter escaping:
+
+```csharp
+// Parameter with commas
+{{Text|function('parameter with, comma')}}
+
+// Parameter with parentheses
+{{Text|function('parameter with (parens)')}}
+```
+
+The library correctly parses these parameters and passes them to your custom functions.
+
+## Global Variables
+
+ClosedXML.Report.XLCustom supports global variables that can be used across all templates:
+
+```csharp
+// Register global variables
+template.RegisterGlobalVariable("CompanyName", "ACME Inc.");
+template.RegisterGlobalVariable("ReportDate", DateTime.Today);
+
+// Register global variable with dynamic value
+template.RegisterGlobalVariable("RandomNumber", () => new Random().Next(1, 100));
+```
+
+### Built-in Global Variables
+
+The following built-in global variables are automatically available:
+
 | Name | Description | Example |
 |------|-------------|---------|
-| `bold` | Makes text bold | `{{Text|bold}}` |
-| `italic` | Makes text italic | `{{Text|italic}}` |
-| `color` | Sets text color | `{{Text|color(Red)}}` |
-| `link` | Creates a hyperlink | `{{Url|link(Click here)}}` |
-| `image` | Displays an image | `{{ImagePath|image(width=100,height=100)}}` |
-
-## Relationship with ClosedXML.Report
-
-This library extends the excellent [ClosedXML.Report](https://github.com/ClosedXML/ClosedXML.Report) project. Key points:
-- XLCustom wraps and extends the XLTemplate class from ClosedXML.Report
-- All existing ClosedXML.Report templates are fully compatible
-- ClosedXML.Report tags (like `<<Group>>`, `<<Sort>>`, etc.) continue to work as expected
-- XLCustom adds new expression processing capabilities that enhance the original functionality
-
-## Advanced Examples
-
-### Custom Formatter Example
-
-```csharp
-// Create a currency formatter with custom symbol
-template.RegisterFormat("currency", (value, parameters) => 
-{
-    if (value == null) return null;
-    
-    if (decimal.TryParse(value.ToString(), out decimal amount))
-    {
-        string currencySymbol = parameters.Length > 0 ? parameters[0] : "$";
-        return $"{currencySymbol}{amount:N2}";
-    }
-    
-    return value;
-});
-
-// In template: {{Price:currency(¢æ)}}
-```
-
-### Custom Function Example
-
-```csharp
-// Create a conditional highlighting function
-template.RegisterFunction("highlight", (cell, value, parameters) => 
-{
-    if (value == null) return;
-    
-    cell.Value = value;
-    
-    // Check if value meets the condition
-    bool highlight = false;
-    
-    if (parameters.Length >= 2)
-    {
-        string condition = parameters[0];
-        string threshold = parameters[1];
-        
-        if (decimal.TryParse(value.ToString(), out decimal numValue) && 
-            decimal.TryParse(threshold, out decimal numThreshold))
-        {
-            switch (condition.ToLower())
-            {
-                case "gt":
-                case ">":
-                    highlight = numValue > numThreshold;
-                    break;
-                case "lt":
-                case "<":
-                    highlight = numValue < numThreshold;
-                    break;
-                case "eq":
-                case "=":
-                case "==":
-                    highlight = numValue == numThreshold;
-                    break;
-            }
-        }
-    }
-    
-    if (highlight)
-    {
-        string color = parameters.Length >= 3 ? parameters[2] : "Yellow";
-        cell.Style.Fill.BackgroundColor = XLColor.FromName(color);
-        cell.Style.Font.Bold = true;
-    }
-});
-
-// In template: {{Amount|highlight(>,1000,LightGreen)}}
-```
+| `Today` | Current date | `{{Today:d}}` |
+| `Now` | Current date and time | `{{Now:f}}` |
+| `Year` | Current year | `{{Year}}` |
+| `Month` | Current month | `{{Month}}` |
+| `Day` | Current day | `{{Day}}` |
+| `MachineName` | Computer name | `{{MachineName}}` |
+| `UserName` | User name | `{{UserName}}` |

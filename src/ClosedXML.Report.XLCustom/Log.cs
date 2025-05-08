@@ -2,6 +2,9 @@
 
 namespace ClosedXML.Report.XLCustom;
 
+/// <summary>
+/// Simple logging utility
+/// </summary>
 internal class Log
 {
     [Conditional("DEBUG")]
