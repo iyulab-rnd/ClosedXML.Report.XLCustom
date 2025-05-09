@@ -1,5 +1,8 @@
 ﻿using ClosedXML.Report.Options;
 using ClosedXML.Report.XLCustom.Tags;
+using DocumentFormat.OpenXml.Vml.Office;
+using System.Collections;
+using System.Reflection;
 
 namespace ClosedXML.Report.XLCustom;
 
@@ -274,10 +277,30 @@ public partial class XLCustomTemplate : IXLTemplate
     public void AddVariable(object value)
     {
         EnsureTemplateCreated();
-        _baseTemplate.AddVariable(value);
+
+        if (value is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                AddVariable(entry.Key.ToString()!, entry.Value);
+            }
+        }
+        else
+        {
+            var type = value.GetType();
+            var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance).Where(f => f.IsPublic)
+                .Select(f => new { f.Name, val = f.GetValue(value), type = f.FieldType })
+                .Concat(type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(f => f.CanRead)
+                    .Select(f => new { f.Name, val = f.GetValue(value, new object[] { }), type = f.PropertyType }));
+
+            foreach (var field in fields)
+            {
+                AddVariable(field.Name, field.val);
+            }
+        }
     }
 
-    public void AddVariable(string alias, object value)
+    public void AddVariable(string alias, object? value)
     {
         EnsureTemplateCreated();
         _baseTemplate.AddVariable(alias, value);
