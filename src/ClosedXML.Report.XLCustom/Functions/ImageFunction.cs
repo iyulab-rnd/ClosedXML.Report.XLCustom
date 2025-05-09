@@ -1,13 +1,4 @@
-﻿using ClosedXML.Excel;
-using ClosedXML.Excel.Drawings;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text.RegularExpressions;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-
-namespace ClosedXML.Report.XLCustom.Functions;
+﻿namespace ClosedXML.Report.XLCustom.Functions;
 
 /// <summary>
 /// Provides image-related function handlers with direct tag-based processing

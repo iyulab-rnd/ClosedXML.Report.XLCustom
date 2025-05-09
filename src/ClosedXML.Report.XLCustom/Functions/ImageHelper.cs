@@ -1,9 +1,5 @@
-﻿using ClosedXML.Excel;
-using SkiaSharp;
+﻿using SkiaSharp;
 using Svg.Skia;
-using System;
-using System.IO;
-using System.Net.Http;
 
 namespace ClosedXML.Report.XLCustom.Functions;
 
@@ -16,8 +12,6 @@ public static class ImageHelper
     private const int DEFAULT_SVG_WIDTH = 300;
     private const int DEFAULT_SVG_HEIGHT = 300;
     private const int MAX_IMAGE_DIMENSION = 2000;
-    private const int DEFAULT_COLUMN_WIDTH = 100;
-    private const int DEFAULT_ROW_HEIGHT = 20;
 
     /// <summary>
     /// Gets image from file path or downloads it from URL
@@ -174,43 +168,5 @@ public static class ImageHelper
             Log.Debug($"SVG conversion error: {ex.Message}");
             return false;
         }
-    }
-
-    /// <summary>
-    /// Calculates dimensions to resize an image while preserving aspect ratio
-    /// </summary>
-    public static (double width, double height) CalculateResizeDimensions(
-        double originalWidth,
-        double originalHeight,
-        double maxWidth,
-        double maxHeight)
-    {
-        // Handle invalid dimensions
-        if (originalWidth <= 0 || originalHeight <= 0 || maxWidth <= 0 || maxHeight <= 0)
-            return (Math.Min(DEFAULT_COLUMN_WIDTH, maxWidth), Math.Min(DEFAULT_ROW_HEIGHT, maxHeight));
-
-        // Calculate ratio to preserve aspect ratio
-        double widthRatio = maxWidth / originalWidth;
-        double heightRatio = maxHeight / originalHeight;
-        double ratio = Math.Min(widthRatio, heightRatio);
-
-        // Calculate new dimensions
-        return (Math.Round(originalWidth * ratio), Math.Round(originalHeight * ratio));
-    }
-
-    /// <summary>
-    /// Gets column width in pixels
-    /// </summary>
-    public static double GetColumnWidthInPixels(IXLColumn column)
-    {
-        return column?.Width ?? DEFAULT_COLUMN_WIDTH;
-    }
-
-    /// <summary>
-    /// Gets row height in pixels
-    /// </summary>
-    public static double GetRowHeightInPixels(IXLRow row)
-    {
-        return row?.Height ?? DEFAULT_ROW_HEIGHT;
     }
 }
